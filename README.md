@@ -1,6 +1,6 @@
 # Throttle
 
-A modern, high-performance rate limiting library for Go 1.24+ with a clean, idiomatic, and modular design.
+A modern, high-performance rate limiting library for Go with a clean, idiomatic, and modular design.
 
 ## Features
 
