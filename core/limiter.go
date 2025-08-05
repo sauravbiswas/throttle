@@ -119,3 +119,8 @@ func (l *Limiter) Clear(ctx context.Context, key string) error {
 
 	return nil
 }
+
+// Config returns the current configuration
+func (l *Limiter) Config() Config {
+	return l.config
+}
