@@ -96,9 +96,11 @@ type Strategy interface {
 
 #### Backends
 - **Memory Backend** (`backend/memory`): High-performance in-memory storage with proper locking
+- **Redis Backend** (`backend/redis`): Distributed rate limiting with Redis storage
 
 #### Strategies
 - **Token Bucket** (`strategy/tokenbucket`): Configurable token bucket algorithm with burst support
+- **Leaky Bucket** (`strategy/leakybucket`): Leaky bucket algorithm for smooth traffic flow
 
 #### Metrics
 - **NoOp Reporter** (`metrics/noop`): No-op implementation for when metrics aren't needed
@@ -107,25 +109,64 @@ type Strategy interface {
 
 ## Configuration
 
-### Token Bucket Configuration
+### Strategy Configuration
 
+#### Token Bucket
 ```go
 config := core.Config{
     Limit:   100,          // Number of tokens per interval
     Interval: time.Minute,  // Time window for the limit
     Burst:   150,          // Maximum burst capacity
 }
+strategy := tokenbucket.NewStrategy(config)
+```
+
+#### Leaky Bucket
+```go
+config := core.Config{
+    Limit:   100,          // Processing rate per interval
+    Interval: time.Minute,  // Time window for the limit
+    Burst:   150,          // Maximum queue size
+}
+strategy := leakybucket.NewStrategy(config)
+```
+
+### Strategy Comparison
+
+| Feature | Token Bucket | Leaky Bucket |
+|---------|-------------|--------------|
+| **Burst Handling** | ✅ Allows bursts up to capacity | ❌ No burst, steady rate |
+| **Traffic Smoothing** | ❌ Can allow spikes | ✅ Smooths traffic flow |
+| **Use Case** | API rate limiting, user quotas | Network shaping, queue processing |
+| **Behavior** | Refills tokens over time | Processes at constant rate |
+
+### Backend Configuration
+
+#### Memory Backend (Default)
+```go
+// Memory backend for single-instance applications
+backend := memory.NewBackend()
+
+// Create a limiter with token bucket strategy
+limiter := core.NewLimiter(backend, strategy, config, metrics)
+```
+
+#### Redis Backend (Distributed)
+```go
+// Redis backend for distributed rate limiting
+backend, err := redis.NewBackendFromURL("redis://localhost:6379/0", "throttle")
+if err != nil {
+    log.Fatal(err)
+}
+defer backend.Close()
+
+// Create a limiter with Redis backend
+limiter := core.NewLimiter(backend, strategy, config, metrics)
 ```
 
 ### Metrics Configuration
 
 ```go
-// For generic metrics (works with any monitoring system)
-metrics := metrics.NewGenericReporter()
-
-// For no metrics
-metrics := metrics.NewNoOpReporter()
-
 // For generic metrics (works with any monitoring system)
 metrics := metrics.NewGenericReporter()
 ```
@@ -146,9 +187,11 @@ grantMetrics := collector.GetMetrics("throttle_grant_total")
 summary := collector.GetMetricsSummary()
 ```
 
-## HTTP Server Example
+## HTTP Server Examples
 
-Run the example server:
+### Memory Backend Server
+
+Run the example server with memory backend:
 
 ```bash
 go run example/server.go
@@ -159,6 +202,35 @@ The server provides these endpoints:
 - `GET /api/resource` - Make a request (consumes tokens)
 - `GET /api/status` - Check current state (no consumption)
 - `GET /api/clear` - Reset rate limit for your IP
+
+### Redis Backend Server
+
+Run the example server with Redis backend for distributed rate limiting:
+
+```bash
+go run cmd/redis-server/main.go
+```
+
+**Prerequisites:**
+- Redis server running on `localhost:6379`
+
+**Redis Setup:**
+```bash
+# Install Redis (macOS)
+brew install redis
+
+# Start Redis server
+redis-server
+
+# Or use Docker
+docker run -d -p 6379:6379 redis:alpine
+```
+
+**Features:**
+- **Distributed rate limiting** across multiple instances
+- **Global state** shared via Redis
+- **Automatic cleanup** with TTL expiration
+- **HTTP headers** with rate limit information
 
 ## Metrics Server
 
@@ -204,6 +276,36 @@ The metrics server provides these endpoints:
   }
 }
 ```
+
+## Testing Tools
+
+### Strategy Comparison Tool
+
+Compare Token Bucket vs Leaky Bucket algorithms:
+
+```bash
+go run cmd/strategy-comparison/main.go
+```
+
+This tool demonstrates the differences between the two algorithms:
+- **Token Bucket**: Allows bursts, refills over time
+- **Leaky Bucket**: Steady processing rate, no bursts
+
+### Interactive Load Tester
+
+For real-time testing and experimentation:
+
+```bash
+go run cmd/interactive/main.go
+```
+
+Interactive commands:
+- `test <key>` - Test rate limiting for a specific key
+- `burst <key>` - Rapid-fire requests to test burst capacity
+- `status <key>` - Check current state without consuming tokens
+- `clear <key>` - Reset rate limit for a key
+- `load <workers>` - Run a quick load test with N workers
+- `quit` - Exit
 
 ## Load Testing
 
